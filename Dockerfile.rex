@@ -2,7 +2,7 @@
 FROM ubuntu:26.04
 
 ARG REX_VERSION=0.1.0-snapshot.2506
-ARG IMAGE_REVISION=1
+ARG IMAGE_REVISION=2
 LABEL org.opencontainers.image.source="https://github.com/klethron-app/klethron-images" \
       org.opencontainers.image.version="${REX_VERSION}-r${IMAGE_REVISION}"
 
