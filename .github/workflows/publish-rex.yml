@@ -1,0 +1,51 @@
+name: Publish Rex image
+
+on:
+  push:
+    branches: [main]
+    paths: [Dockerfile.rex]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-rex
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Check tag, build and publish
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          repository="$GITHUB_REPOSITORY/rex"
+          version=$(sed -n 's/^ARG REX_VERSION=//p' Dockerfile.rex)
+          revision=$(sed -n 's/^ARG IMAGE_REVISION=//p' Dockerfile.rex)
+          tag="${version:?missing REX_VERSION}-r${revision:?missing IMAGE_REVISION}"
+          image="ghcr.io/$repository:$tag"
+
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          token=$(curl -fsS -u "$GITHUB_ACTOR:$GHCR_TOKEN" --get \
+            --data-urlencode "service=ghcr.io" --data-urlencode "scope=repository:$repository:pull,push" \
+            https://ghcr.io/token | jq -er '.token | strings | select(length > 0)')
+          status=$(curl -sS --head --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/$repository/manifests/$tag")
+          case "$status" in
+            404) ;;
+            200) echo "$image already exists. Bump the image revision or Rex version." >&2; exit 1 ;;
+            *) echo "Cannot check $image (HTTP $status)." >&2; exit 1 ;;
+          esac
+
+          docker build --pull -t "$image" - < Dockerfile.rex
+          docker push "$image"
