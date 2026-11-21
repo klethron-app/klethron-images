@@ -2,7 +2,7 @@
 FROM ubuntu:26.04
 
 ARG REX_VERSION=0.1.0-snapshot.2506
-ARG IMAGE_REVISION=2
+ARG IMAGE_REVISION=3
 LABEL org.opencontainers.image.source="https://github.com/klethron-app/klethron-images" \
       org.opencontainers.image.version="${REX_VERSION}-r${IMAGE_REVISION}"
 
@@ -23,4 +23,5 @@ RUN apt-get update \
 USER rex
 WORKDIR /var/lib/rex
 ENV REX_RUNTIME_DIR=/run/rex
-CMD ["rex", "server", "run", "--listen", "/run/rex/server.sock", "--state-dir", "/var/lib/rex", "--socket-mode", "0660", "--log-format", "text"]
+EXPOSE 8080/tcp
+CMD ["rex", "server", "run", "--listen", "/run/rex/server.sock", "--extra-listen", "http://0.0.0.0:8080", "--allow-anonymous", "--state-dir", "/var/lib/rex", "--socket-mode", "0660", "--log-format", "text"]

@@ -48,4 +48,18 @@ jobs:
           esac
 
           docker build --pull -t "$image" - < Dockerfile.rex
+          container=$(docker run --detach --publish 127.0.0.1::8080 "$image")
+          trap 'docker rm -f "$container" >/dev/null' EXIT
+          endpoint=$(docker port "$container" 8080/tcp)
+          [[ "$endpoint" =~ ^127\.0\.0\.1:[0-9]+$ ]]
+          for attempt in {1..20}; do
+            if docker run --rm --network host "$image" rex --autostart=false --server "http://$endpoint" server status --json >/dev/null; then
+              break
+            fi
+            if [[ "$attempt" == 20 ]]; then
+              docker logs "$container"
+              exit 1
+            fi
+            sleep 1
+          done
           docker push "$image"
