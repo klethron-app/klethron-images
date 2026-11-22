@@ -7,6 +7,7 @@ command -v llvm-symbolizer
 for client in ssh scp sftp; do
     binary=/opt/openssh/bin/$client
     test "$(command -v "$client")" = "$binary"
+    readelf -h "$binary" | grep -Eq 'Type:[[:space:]]+EXEC'
     readelf -SW "$binary" | grep -wq .debug_info
     # Check calls emitted in the client's own code. Both sanitizer runtimes
     # can be present in an executable whose source was never instrumented.
@@ -20,7 +21,10 @@ ssh -G -F /dev/null localhost | grep -qx 'hostname localhost'
 for client in scp sftp; do
     status=0
     "$client" 2>/tmp/usage || status=$?
-    test "$status" = 1
+    if test "$status" != 1; then
+        cat /tmp/usage >&2
+        exit 1
+    fi
     grep -q "^usage: $client " /tmp/usage
 done
 CONTAINER

@@ -20,6 +20,8 @@ C
 ARG OPENSSH_REVISION
 # Bump when a changed recipe or base image should rebuild the same snapshot.
 ARG IMAGE_REVISION=1
+# A fixed executable address keeps Clang 14's ASan shadow mapping available
+# on Linux hosts with high-entropy ASLR.
 RUN set -eu; \
     test -n "$OPENSSH_REVISION"; \
     git init -q /usr/src/openssh; \
@@ -31,9 +33,9 @@ RUN set -eu; \
     mkdir /tmp/openssh-build; \
     cd /tmp/openssh-build; \
     clang -c /tmp/openssh-sanitizer-options.c -o sanitizer-options.o; \
-    CC=clang /usr/src/openssh/configure --prefix=/opt/openssh --without-hardening \
-        --with-cflags-after='-O1 -g -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address,undefined -fno-sanitize-recover=all' \
-        --with-ldflags-after='-fsanitize=address,undefined /tmp/openssh-build/sanitizer-options.o'; \
+    CC=clang /usr/src/openssh/configure --prefix=/opt/openssh --without-hardening --without-pie \
+        --with-cflags-after='-O1 -g -fno-pie -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address,undefined -fno-sanitize-recover=all' \
+        --with-ldflags-after='-no-pie -fsanitize=address,undefined /tmp/openssh-build/sanitizer-options.o'; \
     make -j"$(nproc)" ssh scp sftp; \
     install -d /opt/openssh/bin; \
     install -m 0755 ssh scp sftp /opt/openssh/bin/; \
