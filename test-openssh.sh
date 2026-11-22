@@ -2,7 +2,7 @@
 set -euo pipefail
 
 image=${1:?usage: bash test-openssh.sh IMAGE}
-docker run --rm -i "$image" sh -eu <<'CONTAINER'
+docker run --rm -i "$image" sh -eux <<'CONTAINER'
 command -v llvm-symbolizer
 for client in ssh scp sftp; do
     binary=/opt/openssh/bin/$client
