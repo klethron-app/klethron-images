@@ -1,0 +1,48 @@
+name: Publish libssh image
+
+on:
+  push:
+    branches: [main]
+    paths: [Dockerfile.libssh, test-libssh.sh, .github/workflows/publish-libssh.yml]
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-libssh
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build and test the upstream development revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision=$(git ls-remote --exit-code https://gitlab.com/libssh/libssh-mirror.git refs/heads/master | cut -f1)
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/libssh"
+          docker build --pull --build-arg "LIBSSH_REVISION=$revision" \
+            -t "$image:git-$revision" -t "$image:latest" - < Dockerfile.libssh
+          bash test-libssh.sh "$image:git-$revision"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          echo "REVISION=$revision" >> "$GITHUB_ENV"
+
+      - name: Publish to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:git-$REVISION"
+          docker push "$IMAGE:latest"

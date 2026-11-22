@@ -1,0 +1,35 @@
+# syntax=docker/dockerfile:1
+FROM rust:1.100.0-slim-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        binutils cmake git jq libssl-dev make pkg-config zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG LIBSSH_REVISION
+RUN test -n "$LIBSSH_REVISION" \
+    && git init -q /usr/src/libssh \
+    && git -C /usr/src/libssh fetch --depth=1 https://gitlab.com/libssh/libssh-mirror.git "$LIBSSH_REVISION" \
+    && git -C /usr/src/libssh checkout -q --detach FETCH_HEAD \
+    && test "$(git -C /usr/src/libssh rev-parse HEAD)" = "$LIBSSH_REVISION" \
+    && cmake -S /usr/src/libssh -B /tmp/libssh-build \
+        -DCMAKE_BUILD_TYPE=Debug \
+        '-DCMAKE_C_FLAGS_DEBUG=-g -O1 -fno-omit-frame-pointer -fsanitize=address' \
+        -DCMAKE_INSTALL_PREFIX=/opt/libssh -DCMAKE_INSTALL_LIBDIR=lib \
+        -DBUILD_SHARED_LIBS=ON -DWITH_EXAMPLES=OFF -DWITH_GSSAPI=OFF \
+    && cmake --build /tmp/libssh-build --parallel \
+    && cmake --install /tmp/libssh-build \
+    && rm -rf /tmp/libssh-build /usr/src/libssh/.git \
+    && echo /opt/libssh/lib > /etc/ld.so.conf.d/libssh.conf \
+    && ldconfig
+
+ENV PKG_CONFIG_PATH=/opt/libssh/lib/pkgconfig
+LABEL org.opencontainers.image.source="https://github.com/klethron-app/klethron-images" \
+      org.opencontainers.image.version="${LIBSSH_REVISION}"
+
+# Put GCC's ASan runtime first even for callers such as rustc that pass
+# -nodefaultlibs. Only use this linker for final executable targets.
+COPY --chmod=0755 <<'SCRIPT' /usr/local/bin/libssh-asan-cc
+#!/bin/sh
+exec cc -Wl,--push-state,--no-as-needed -lasan -Wl,--pop-state "$@"
+SCRIPT

@@ -32,3 +32,27 @@ fails if the tag already exists.
 
 The workflow authenticates to GHCR with the repository’s built-in
 `GITHUB_TOKEN` and the `packages: write` permission.
+
+## libssh
+
+`ghcr.io/klethron-app/klethron-images/libssh:latest` contains the upstream
+development branch (`master`) built with GCC AddressSanitizer, debug symbols
+and frame pointers. Headers, the shared library and pkg-config metadata live
+under `/opt/libssh`. Debug symbols refer to sources included in `/usr/src/libssh`.
+The published Linux/amd64 image includes Rust 1.100.0 for the ssh-client-tester adapter.
+
+The workflow resolves upstream to an exact commit on pushes affecting the
+image, daily, and on manual dispatch. It tests a dynamically linked client
+before publishing `latest` and `git-<full-libssh-commit>`. The OCI version
+label records that commit. Pin the GHCR digest to repeat the exact image build.
+
+To build and check the image locally:
+
+```sh
+revision=$(git ls-remote --exit-code https://gitlab.com/libssh/libssh-mirror.git refs/heads/master | cut -f1)
+docker build --build-arg "LIBSSH_REVISION=$revision" -t libssh:local - < Dockerfile.libssh
+bash test-libssh.sh libssh:local
+```
+
+Link native clients with `-fsanitize=address`. For Rust test executables,
+`-C linker=libssh-asan-cc` places the ASan runtime first during linking.
