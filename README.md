@@ -59,19 +59,26 @@ Link native clients with `-fsanitize=address`. For Rust test executables,
 
 ## OpenSSH
 
-`ghcr.io/klethron-app/klethron-images/openssh:latest` contains OpenSSH
-Portable's development branch (`master`). The Linux/amd64 image includes
+The OpenSSH image contains a snapshot of OpenSSH Portable's development
+branch (`master`). The Linux/amd64 image includes
 Rust 1.100.0, Clang's symbolizer, and the unstripped `ssh`, `scp` and
 `sftp` clients in `/opt/openssh/bin` on `PATH`. All three use AddressSanitizer
 and UndefinedBehaviorSanitizer with fatal findings. Their built-in defaults
 disable leak checking and abort on errors even with an empty environment.
 The source used for stack traces is in `/usr/src/openssh`.
 
-The workflow builds daily, on changes to the image, and on manual dispatch.
-It checks instrumentation in each client's code and runs all three before
-publishing `latest` and `git-<full-openssh-commit>`. The OCI version label
-records the upstream commit. Use the image digest to replay an exact build.
+Pin a tag such as `10.6p2-git.fa4b2a82be7d-r1` to repeat a build. The tag
+records the OpenSSH version, the first 12 digits of the upstream commit,
+and the image revision from `Dockerfile.openssh`. Bump `IMAGE_REVISION`
+when changing the recipe, toolchain or base image for the same snapshot.
+The OCI version label records the tag and the revision label records the
+full upstream commit.
+
+The workflow checks upstream daily, on image-related pushes to `main`, and
+on manual dispatch. It skips builds for existing versioned tags. For a new
+tag, it verifies instrumentation and runs all three clients before publishing.
+The `latest` alias points to the published snapshot.
 
 ```sh
-docker run --rm ghcr.io/klethron-app/klethron-images/openssh:latest ssh -V
+docker run --rm ghcr.io/klethron-app/klethron-images/openssh:10.6p2-git.fa4b2a82be7d-r1 ssh -V
 ```

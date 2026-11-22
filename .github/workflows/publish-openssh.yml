@@ -18,31 +18,66 @@ concurrency:
 
 jobs:
   publish:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
 
-      - name: Build and test the upstream development revision
+      - name: Resolve the OpenSSH snapshot and image tag
         shell: bash
         run: |
           set -euo pipefail
           revision=$(git ls-remote --exit-code https://github.com/openssh/openssh-portable.git refs/heads/master | cut -f1)
           [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
-          image="ghcr.io/${GITHUB_REPOSITORY,,}/openssh"
-          docker build --pull --build-arg "OPENSSH_REVISION=$revision" \
-            -t "$image:git-$revision" -t "$image:latest" - < Dockerfile.openssh
-          bash test-openssh.sh "$image:git-$revision"
-          echo "IMAGE=$image" >> "$GITHUB_ENV"
-          echo "REVISION=$revision" >> "$GITHUB_ENV"
+          header=$(curl -fsSL "https://raw.githubusercontent.com/openssh/openssh-portable/$revision/version.h")
+          release=$(awk -F'"' '/^#define[[:space:]]+SSH_VERSION[[:space:]]/ { print $2 }' <<< "$header")
+          portable=$(awk -F'"' '/^#define[[:space:]]+SSH_PORTABLE[[:space:]]/ { print $2 }' <<< "$header")
+          version="${release#OpenSSH_}$portable"
+          [[ "$version" =~ ^[0-9]+(\.[0-9]+)+p[0-9]+$ ]]
+          recipe=$(sed -n 's/^ARG IMAGE_REVISION=//p' Dockerfile.openssh)
+          [[ "$recipe" =~ ^[1-9][0-9]*$ ]]
+          {
+            echo "UPSTREAM=$revision"
+            echo "VERSION=$version"
+            echo "IMAGE=ghcr.io/${GITHUB_REPOSITORY,,}/openssh"
+            echo "TAG=$version-git.${revision:0:12}-r$recipe"
+          } >> "$GITHUB_ENV"
 
-      - name: Publish to GHCR
+      - name: Check for a published version
         shell: bash
         env:
           GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          repository=${IMAGE#ghcr.io/}
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker push "$IMAGE:git-$REVISION"
-          docker push "$IMAGE:latest"
+          token=$(curl -fsS -u "$GITHUB_ACTOR:$GHCR_TOKEN" --get \
+            --data-urlencode "service=ghcr.io" --data-urlencode "scope=repository:$repository:pull" \
+            https://ghcr.io/token | jq -er '.token')
+          status=$(curl -sS --head --output /dev/null --write-out '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+            "https://ghcr.io/v2/$repository/manifests/$TAG")
+          case "$status" in
+            200) echo "Already published $IMAGE:$TAG. Skipping the build." ;;
+            404) echo "BUILD_IMAGE=true" >> "$GITHUB_ENV" ;;
+            *) echo "Cannot check $IMAGE:$TAG (HTTP $status)." >&2; exit 1 ;;
+          esac
+
+      - name: Build, test and publish the versioned image
+        if: env.BUILD_IMAGE == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --pull --build-arg "OPENSSH_REVISION=$UPSTREAM" \
+            --label "org.opencontainers.image.version=$TAG" -t "$IMAGE:$TAG" - < Dockerfile.openssh
+          bash test-openssh.sh "$IMAGE:$TAG"
+          banner=$(docker run --rm "$IMAGE:$TAG" ssh -V 2>&1)
+          [[ "$banner" == "OpenSSH_${VERSION},"* ]]
+          docker push "$IMAGE:$TAG"
+
+      # Also repairs latest if a previous run stopped after the versioned push.
+      - name: Point latest at the published version
+        run: docker buildx imagetools create --prefer-index=false --tag "$IMAGE:latest" "$IMAGE:$TAG"

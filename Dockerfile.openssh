@@ -18,6 +18,8 @@ const char *__ubsan_default_options(void) {
 C
 
 ARG OPENSSH_REVISION
+# Bump when a changed recipe or base image should rebuild the same snapshot.
+ARG IMAGE_REVISION=1
 RUN set -eu; \
     test -n "$OPENSSH_REVISION"; \
     git init -q /usr/src/openssh; \
@@ -40,4 +42,4 @@ RUN set -eu; \
 
 ENV PATH="/opt/openssh/bin:${PATH}"
 LABEL org.opencontainers.image.source="https://github.com/klethron-app/klethron-images" \
-      org.opencontainers.image.version="${OPENSSH_REVISION}"
+      org.opencontainers.image.revision="${OPENSSH_REVISION}"
