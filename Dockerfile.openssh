@@ -1,0 +1,43 @@
+# syntax=docker/dockerfile:1
+FROM rust:1.100.0-slim-bookworm
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        autoconf binutils clang git libclang-rt-dev libssl-dev llvm make zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# The adapter starts clients with a clean environment. Link the runtime
+# defaults into each executable so findings still raise SIGABRT.
+COPY <<'C' /tmp/openssh-sanitizer-options.c
+const char *__asan_default_options(void) {
+    return "abort_on_error=1:detect_leaks=0";
+}
+const char *__ubsan_default_options(void) {
+    return "abort_on_error=1:print_stacktrace=1";
+}
+C
+
+ARG OPENSSH_REVISION
+RUN set -eu; \
+    test -n "$OPENSSH_REVISION"; \
+    git init -q /usr/src/openssh; \
+    cd /usr/src/openssh; \
+    git fetch --depth=1 https://github.com/openssh/openssh-portable.git "$OPENSSH_REVISION"; \
+    git checkout -q --detach FETCH_HEAD; \
+    test "$(git rev-parse HEAD)" = "$OPENSSH_REVISION"; \
+    autoreconf; \
+    mkdir /tmp/openssh-build; \
+    cd /tmp/openssh-build; \
+    clang -c /tmp/openssh-sanitizer-options.c -o sanitizer-options.o; \
+    CC=clang /usr/src/openssh/configure --prefix=/opt/openssh --without-hardening \
+        --with-cflags-after='-O1 -g -fno-omit-frame-pointer -fno-optimize-sibling-calls -fsanitize=address,undefined -fno-sanitize-recover=all' \
+        --with-ldflags-after='-fsanitize=address,undefined /tmp/openssh-build/sanitizer-options.o'; \
+    make -j"$(nproc)" ssh scp sftp; \
+    install -d /opt/openssh/bin; \
+    install -m 0755 ssh scp sftp /opt/openssh/bin/; \
+    cd /; \
+    rm -rf /tmp/openssh-build /usr/src/openssh/.git /tmp/openssh-sanitizer-options.c
+
+ENV PATH="/opt/openssh/bin:${PATH}"
+LABEL org.opencontainers.image.source="https://github.com/klethron-app/klethron-images" \
+      org.opencontainers.image.version="${OPENSSH_REVISION}"

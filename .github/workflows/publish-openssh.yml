@@ -1,0 +1,48 @@
+name: Publish OpenSSH image
+
+on:
+  push:
+    branches: [main]
+    paths: [Dockerfile.openssh, test-openssh.sh, .github/workflows/publish-openssh.yml]
+  schedule:
+    - cron: '43 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-openssh
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Build and test the upstream development revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          revision=$(git ls-remote --exit-code https://github.com/openssh/openssh-portable.git refs/heads/master | cut -f1)
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]]
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/openssh"
+          docker build --pull --build-arg "OPENSSH_REVISION=$revision" \
+            -t "$image:git-$revision" -t "$image:latest" - < Dockerfile.openssh
+          bash test-openssh.sh "$image:git-$revision"
+          echo "IMAGE=$image" >> "$GITHUB_ENV"
+          echo "REVISION=$revision" >> "$GITHUB_ENV"
+
+      - name: Publish to GHCR
+        shell: bash
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:git-$REVISION"
+          docker push "$IMAGE:latest"

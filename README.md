@@ -56,3 +56,22 @@ bash test-libssh.sh libssh:local
 
 Link native clients with `-fsanitize=address`. For Rust test executables,
 `-C linker=libssh-asan-cc` places the ASan runtime first during linking.
+
+## OpenSSH
+
+`ghcr.io/klethron-app/klethron-images/openssh:latest` contains OpenSSH
+Portable's development branch (`master`). The Linux/amd64 image includes
+Rust 1.100.0, Clang's symbolizer, and the unstripped `ssh`, `scp` and
+`sftp` clients in `/opt/openssh/bin` on `PATH`. All three use AddressSanitizer
+and UndefinedBehaviorSanitizer with fatal findings. Their built-in defaults
+disable leak checking and abort on errors even with an empty environment.
+The source used for stack traces is in `/usr/src/openssh`.
+
+The workflow builds daily, on changes to the image, and on manual dispatch.
+It checks instrumentation in each client's code and runs all three before
+publishing `latest` and `git-<full-openssh-commit>`. The OCI version label
+records the upstream commit. Use the image digest to replay an exact build.
+
+```sh
+docker run --rm ghcr.io/klethron-app/klethron-images/openssh:latest ssh -V
+```
