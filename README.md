@@ -42,7 +42,7 @@ under `/opt/libssh`. Debug symbols refer to sources included in `/usr/src/libssh
 The published Linux/amd64 image includes Rust 1.100.0 for the ssh-client-tester adapter.
 
 The workflow resolves upstream to an exact commit on pushes affecting the
-image, daily, and on manual dispatch. It tests a dynamically linked client
+image and on manual dispatch. It tests a dynamically linked client
 before publishing `latest` and `git-<full-libssh-commit>`. The OCI version
 label records that commit. Pin the GHCR digest to repeat the exact image build.
 
@@ -74,7 +74,7 @@ when changing the recipe, toolchain or base image for the same snapshot.
 The OCI version label records the tag and the revision label records the
 full upstream commit.
 
-The workflow checks upstream daily, on image-related pushes to `main`, and
+The workflow checks upstream on image-related pushes to `main` and
 on manual dispatch. It skips builds for existing versioned tags. For a new
 tag, it verifies instrumentation and runs all three clients before publishing.
 The `latest` alias points to the published snapshot.

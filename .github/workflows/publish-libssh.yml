@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
     paths: [Dockerfile.libssh, test-libssh.sh, .github/workflows/publish-libssh.yml]
-  schedule:
-    - cron: '23 4 * * *'
   workflow_dispatch:
 
 permissions:

@@ -4,8 +4,6 @@ on:
   push:
     branches: [main]
     paths: [Dockerfile.openssh, test-openssh.sh, .github/workflows/publish-openssh.yml]
-  schedule:
-    - cron: '43 4 * * *'
   workflow_dispatch:
 
 permissions:
