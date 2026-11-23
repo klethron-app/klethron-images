@@ -1,8 +1,8 @@
 # syntax=docker/dockerfile:1
 FROM ubuntu:26.04
 
-ARG REX_VERSION=0.1.0-snapshot.2506
-ARG IMAGE_REVISION=4
+ARG REX_VERSION=0.1.0-snapshot.2517
+ARG IMAGE_REVISION=1
 LABEL org.opencontainers.image.source="https://github.com/klethron-app/klethron-images" \
       org.opencontainers.image.version="${REX_VERSION}-r${IMAGE_REVISION}"
 
