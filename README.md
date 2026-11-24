@@ -12,7 +12,7 @@ HTTP clients and has a fixed SSH login, `rex` / `test-password`. Publish the
 test ports on host loopback. Docker assigns an available host port to each.
 
 ```sh
-image=ghcr.io/klethron-app/klethron-images/rex:0.1.0-snapshot.2506-r4
+image=ghcr.io/klethron-app/klethron-images/rex:0.1.0-snapshot.2531-r1
 container=$(docker run --detach --rm -p 127.0.0.1::22 -p 127.0.0.1::8080 "$image")
 ssh_endpoint=$(docker port "$container" 22/tcp)
 docker port "$container" 8080/tcp
