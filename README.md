@@ -82,3 +82,56 @@ The `latest` alias points to the published snapshot.
 ```sh
 docker run --rm ghcr.io/klethron-app/klethron-images/openssh:10.6p2-git.fa4b2a82be7d-r1 ssh -V
 ```
+
+## Netstack peer
+
+`Dockerfile.netstack-peer` builds the Go program in `netstack-peer/`, a test
+peer for the TCP/IP stack in Klethron's `klethron-tailnet` module, and runs
+it on Alpine. The peer serves from the Linux kernel's TCP behind a TUN device,
+`kns0`, with the addresses `100.64.0.2/32` and `fd7a:115c:a1e0::2/128` and an
+MTU of 1280. It exchanges raw IP packets with the client as UDP datagrams on
+its `-listen` address and replies to whichever address sent the last one.
+When ready, it prints `LISTEN` and that address.
+
+The container needs `NET_ADMIN`, the TUN device and IPv6. Duplicate address
+detection must be off, since nothing answers it on a TUN device. Publish the
+UDP port on host loopback:
+
+```sh
+image=ghcr.io/klethron-app/klethron-images/netstack-peer:r1
+container=$(docker run --detach --rm -p 127.0.0.1::47123/udp \
+    --cap-add NET_ADMIN --device /dev/net/tun \
+    --sysctl net.ipv6.conf.all.disable_ipv6=0 \
+    --sysctl net.ipv6.conf.default.accept_dad=0 \
+    "$image" -listen 0.0.0.0:47123)
+docker port "$container" 47123/udp
+```
+
+Run `docker stop "$container"` when the test finishes.
+
+TCP port 7 on both addresses serves the `KNS1` transfer check. The client
+sends `KNS1`, the upload and download sizes as big-endian 64-bit integers and
+a big-endian 32-bit seed. It then uploads that many bytes of the stream for
+the seed and closes its output. The server sends the download bytes of the
+stream for the seed plus one, then a status byte, and closes. Status 0 means
+the upload matched and ended there. The stream is xorshift32 started at
+`seed * 0x9e3779b9 + 1`, one low byte per step, as in `netstack-peer/main.go`.
+
+Klethron's `OracleInteropTest` is the client and the real check. Under
+`./gradlew :klethron-tailnet:integrationTest`, it runs transfers over IPv4
+and IPv6 with loss, duplication, reordering and delay. `test-netstack-peer.sh`
+only checks that the peer starts and configures `kns0`.
+
+When a push to `main` changes `Dockerfile.netstack-peer` or `netstack-peer/`,
+GitHub Actions publishes
+`ghcr.io/klethron-app/klethron-images/netstack-peer:r<IMAGE_REVISION>`.
+Bump the revision with every such change. The job fails if the tag already
+exists. Klethron pins the published tag and digest as `netstackKernelPeerImage`
+in `gradle/libs.versions.toml`.
+
+To build and check the image locally:
+
+```sh
+docker build -t netstack-peer:local -f Dockerfile.netstack-peer netstack-peer
+bash test-netstack-peer.sh netstack-peer:local
+```

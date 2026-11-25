@@ -1,0 +1,17 @@
+# syntax=docker/dockerfile:1
+# Build with the netstack-peer directory as the context.
+FROM golang:1.27.4-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS build
+COPY . /src
+WORKDIR /src
+RUN CGO_ENABLED=0 GOFLAGS=-mod=readonly GOTOOLCHAIN=local go build -trimpath -o /out/netstack-peer .
+
+# The peer calls busybox's ip to configure its TUN device.
+FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
+
+# Bump with every change to the source, recipe or base images; each revision is a new tag.
+ARG IMAGE_REVISION=1
+LABEL org.opencontainers.image.source="https://github.com/klethron-app/klethron-images" \
+      org.opencontainers.image.version="r${IMAGE_REVISION}"
+
+COPY --from=build /out/netstack-peer /usr/local/bin/netstack-peer
+ENTRYPOINT ["/usr/local/bin/netstack-peer"]
